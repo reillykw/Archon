@@ -35,34 +35,38 @@ export function formatToolCall(toolName: string, toolInput?: Record<string, unkn
  * @returns Brief description of what the tool is doing
  */
 function extractBriefInfo(toolName: string, toolInput: Record<string, unknown>): string | null {
+  // Read operations - show file path
+  if ((toolName === 'Read' || toolName === 'read_file') && toolInput.file_path) {
+    return `Reading: ${toolInput.file_path as string}`;
+  }
+
+  // Write operations - show file path
+  if ((toolName === 'Write' || toolName === 'write_file') && toolInput.file_path) {
+    return `Writing: ${toolInput.file_path as string}`;
+  }
+
+  // Edit operations - show file path
+  if ((toolName === 'Edit' || toolName === 'replace') && toolInput.file_path) {
+    return `Editing: ${toolInput.file_path as string}`;
+  }
+
   // Bash commands - show the command (truncated)
   if (toolName === 'Bash' && toolInput.command) {
     const cmd = toolInput.command as string;
     return cmd.length > 100 ? cmd.substring(0, 100) + '...' : cmd;
   }
-
-  // Read operations - show file path
-  if (toolName === 'Read' && toolInput.file_path) {
-    return `Reading: ${toolInput.file_path as string}`;
-  }
-
-  // Write operations - show file path
-  if (toolName === 'Write' && toolInput.file_path) {
-    return `Writing: ${toolInput.file_path as string}`;
-  }
-
-  // Edit operations - show file path
-  if (toolName === 'Edit' && toolInput.file_path) {
-    return `Editing: ${toolInput.file_path as string}`;
+  if (toolName === 'run_shell_command' && toolInput.command) {
+    const cmd = toolInput.command as string;
+    return cmd.length > 100 ? cmd.substring(0, 100) + '...' : cmd;
   }
 
   // Glob operations - show pattern
-  if (toolName === 'Glob' && toolInput.pattern) {
+  if ((toolName === 'Glob' || toolName === 'glob') && toolInput.pattern) {
     return `Pattern: ${toolInput.pattern as string}`;
   }
 
   // Grep operations - show pattern
-  if (toolName === 'Grep' && toolInput.pattern) {
+  if ((toolName === 'Grep' || toolName === 'grep_search') && toolInput.pattern) {
     return `Searching: ${toolInput.pattern as string}`;
   }
 

@@ -51,7 +51,7 @@ Create `~/.archon/config.yaml` for user-wide preferences:
 
 ```yaml
 # Default AI assistant
-defaultAssistant: claude # or 'codex'
+defaultAssistant: claude # must match a registered provider (e.g. claude, codex)
 
 # Assistant defaults
 assistants:
@@ -83,11 +83,6 @@ paths:
 concurrency:
   maxConversations: 10
 
-# Env-leak gate bypass (last resort — weakens a security control)
-# allow_target_repo_keys: false  # Set true to skip the env-leak-gate
-                                 # globally for all codebases on this machine.
-                                 # `env_leak_gate_disabled` is logged once per
-                                 # process per source. See security.md.
 ```
 
 ## Repository Configuration
@@ -135,11 +130,6 @@ defaults:
 #   MY_API_KEY: value
 #   CUSTOM_ENDPOINT: https://...
 
-# Per-repo override for the env-leak-gate bypass.
-# Set to `false` to re-enable the gate for THIS repo even when the global
-# config has `allow_target_repo_keys: true`. Set to `true` to grant the
-# bypass for THIS repo only. Wins over the global flag in either direction.
-# allow_target_repo_keys: false
 ```
 
 ### Claude settingSources
@@ -187,7 +177,7 @@ Environment variables override all other configuration. They are organized by ca
 | `PORT` | HTTP server listen port | `3090` (auto-allocated in worktrees) |
 | `LOG_LEVEL` | Logging verbosity (`fatal`, `error`, `warn`, `info`, `debug`, `trace`) | `info` |
 | `BOT_DISPLAY_NAME` | Bot name shown in batch-mode "starting" messages | `Archon` |
-| `DEFAULT_AI_ASSISTANT` | Default AI assistant (`claude` or `codex`) | `claude` |
+| `DEFAULT_AI_ASSISTANT` | Default AI assistant (must match a registered provider) | `claude` |
 | `MAX_CONCURRENT_CONVERSATIONS` | Maximum concurrent AI conversations | `10` |
 | `SESSION_RETENTION_DAYS` | Delete inactive sessions older than N days | `30` |
 | `ARCHON_SUPPRESS_NESTED_CLAUDE_WARNING` | When set to `1`, suppresses the stderr warning emitted when `archon` is run inside a Claude Code session | -- |

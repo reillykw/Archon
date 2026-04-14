@@ -13,9 +13,9 @@ import type {
   HandleMessageContext,
   Conversation,
   Codebase,
-  AssistantRequestOptions,
   AttachedFile,
 } from '../types';
+import type { SendQueryOptions } from '@archon/providers/types';
 import { ConversationNotFoundError } from '../types';
 import * as db from '../db/conversations';
 import * as codebaseDb from '../db/codebases';
@@ -24,7 +24,7 @@ import * as commandHandler from '../handlers/command-handler';
 import { formatToolCall } from '@archon/workflows/utils/tool-formatter';
 import { classifyAndFormatError } from '../utils/error-formatter';
 import { toError } from '../utils/error';
-import { getAssistantClient } from '../clients/factory';
+import { getAgentProvider, getProviderCapabilities } from '@archon/providers';
 import { getArchonHome, getArchonWorkspacesPath } from '@archon/paths';
 import { syncArchonToWorktree } from '../utils/worktree-sync';
 import { syncWorkspace, toRepoPath } from '@archon/git';
@@ -46,6 +46,7 @@ import { IsolationBlockedError } from '@archon/isolation';
 import { buildOrchestratorPrompt, buildProjectScopedPrompt } from './prompt-builder';
 import * as workflowDb from '../db/workflows';
 import * as workflowEventDb from '../db/workflow-events';
+import { getCodebaseEnvVars } from '../db/env-vars';
 import type { ApprovalContext } from '@archon/workflows/schemas/workflow-run';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
@@ -751,17 +752,41 @@ export async function handleMessage(
       });
     }
 
-    // 5. Send to AI client
-    const aiClient = getAssistantClient(conversation.ai_assistant_type);
+    // 5. Send to AI provider
+    const aiClient = getAgentProvider(conversation.ai_assistant_type);
     getLog().debug({ assistantType: conversation.ai_assistant_type }, 'sending_to_ai');
 
     // Reuse the config already loaded during workflow discovery (avoids a second disk read).
     // Fall back to loadConfig only when no codebase is scoped (discoveredConfig is undefined).
     const config = discoveredConfig ?? (await loadConfig());
-    const requestOptions: AssistantRequestOptions = {
-      ...(conversation.ai_assistant_type === 'claude' && config.assistants.claude.settingSources
-        ? { settingSources: config.assistants.claude.settingSources }
-        : {}),
+    const providerKey = conversation.ai_assistant_type;
+    let dbEnvVars: Record<string, string> = {};
+    if (conversation.codebase_id) {
+      try {
+        dbEnvVars = await getCodebaseEnvVars(conversation.codebase_id);
+      } catch (error) {
+        getLog().warn(
+          { err: error as Error, codebaseId: conversation.codebase_id },
+          'codebase_env_vars_load_failed'
+        );
+      }
+    }
+    const effectiveEnv = { ...(config.envVars ?? {}), ...dbEnvVars };
+
+    // Warn if provider doesn't support env injection but env vars are configured
+    if (Object.keys(effectiveEnv).length > 0) {
+      const providerCaps = getProviderCapabilities(providerKey);
+      if (!providerCaps.envInjection) {
+        getLog().warn(
+          { provider: providerKey, envVarCount: Object.keys(effectiveEnv).length },
+          'orchestrator.unsupported_env_injection'
+        );
+      }
+    }
+
+    const requestOptions: SendQueryOptions = {
+      assistantConfig: config.assistants[providerKey] ?? {},
+      env: Object.keys(effectiveEnv).length > 0 ? effectiveEnv : undefined,
     };
 
     const mode = platform.getStreamingMode();
@@ -824,14 +849,14 @@ async function handleStreamMode(
   originalMessage: string,
   codebases: readonly Codebase[],
   workflows: readonly WorkflowDefinition[],
-  aiClient: ReturnType<typeof getAssistantClient>,
+  aiClient: ReturnType<typeof getAgentProvider>,
   fullPrompt: string,
   cwd: string,
   session: { id: string; assistant_session_id: string | null },
   isolationHints: HandleMessageContext['isolationHints'],
   conversation: Conversation,
   issueContext?: string,
-  requestOptions?: AssistantRequestOptions
+  requestOptions?: SendQueryOptions
 ): Promise<void> {
   const allMessages: string[] = [];
   let newSessionId: string | undefined;
@@ -940,14 +965,14 @@ async function handleBatchMode(
   originalMessage: string,
   codebases: readonly Codebase[],
   workflows: readonly WorkflowDefinition[],
-  aiClient: ReturnType<typeof getAssistantClient>,
+  aiClient: ReturnType<typeof getAgentProvider>,
   fullPrompt: string,
   cwd: string,
   session: { id: string; assistant_session_id: string | null },
   isolationHints: HandleMessageContext['isolationHints'],
   conversation: Conversation,
   issueContext?: string,
-  requestOptions?: AssistantRequestOptions
+  requestOptions?: SendQueryOptions
 ): Promise<void> {
   const allChunks: { type: string; content: string }[] = [];
   const assistantMessages: string[] = [];
@@ -1189,11 +1214,12 @@ async function handleRegisterProject(
     return `Project "${projectName}" is already registered (path: ${alreadyExists.default_cwd}).`;
   }
 
-  // Create codebase record
+  // Use config default provider instead of hardcoding 'claude'
+  const config = await loadConfig();
   const codebase = await codebaseDb.createCodebase({
     name: projectName,
     default_cwd: projectPath,
-    ai_assistant_type: 'claude',
+    ai_assistant_type: config.assistant,
   });
 
   getLog().info(

@@ -44,6 +44,10 @@ if (!process.env.CLAUDE_API_KEY && !process.env.CLAUDE_CODE_OAUTH_TOKEN) {
 
 // DATABASE_URL is no longer required - SQLite will be used as default
 
+// Bootstrap provider registry before any provider lookups
+import { registerBuiltinProviders } from '@archon/providers';
+registerBuiltinProviders();
+
 // Import commands after dotenv is loaded
 import { versionCommand } from './commands/version';
 import {
@@ -126,9 +130,6 @@ Options:
   --json                     Output machine-readable JSON (for workflow list)
   --workflow <name>          Workflow to run for 'continue' (default: archon-assist)
   --no-context               Skip context injection for 'continue'
-  --allow-env-keys           Grant env-key consent during auto-registration
-                             (bypasses the env-leak gate for this codebase;
-                             logs an audit entry)
   --port <port>              Override server port for 'serve' (default: 3090)
   --download-only            Download web UI without starting the server
 
@@ -208,7 +209,6 @@ async function main(): Promise<number> {
         reason: { type: 'string' },
         workflow: { type: 'string' },
         'no-context': { type: 'boolean' },
-        'allow-env-keys': { type: 'boolean' },
         port: { type: 'string' },
         'download-only': { type: 'boolean' },
       },
@@ -232,8 +232,6 @@ async function main(): Promise<number> {
   const resumeFlag = values.resume as boolean | undefined;
   const spawnFlag = values.spawn as boolean | undefined;
   const jsonFlag = values.json as boolean | undefined;
-  const allowEnvKeysFlag = values['allow-env-keys'] as boolean | undefined;
-
   // Handle help flag
   if (values.help) {
     printUsage();
@@ -345,7 +343,6 @@ async function main(): Promise<number> {
               fromBranch,
               noWorktree,
               resume: resumeFlag,
-              allowEnvKeys: allowEnvKeysFlag,
               quiet: values.quiet as boolean | undefined,
               verbose: values.verbose as boolean | undefined,
             };

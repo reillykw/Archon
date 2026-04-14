@@ -10,28 +10,41 @@
  * Global configuration (non-secret user preferences)
  * Located at ~/.archon/config.yaml
  */
-import type { ModelReasoningEffort, WebSearchMode } from '../types';
 
-export interface AssistantDefaults {
-  model?: string;
-  modelReasoningEffort?: ModelReasoningEffort;
-  webSearchMode?: WebSearchMode;
-  additionalDirectories?: string[];
-  /** Path to the Codex CLI binary. Overrides auto-detection in compiled Archon builds.
-   *  Only relevant for the Codex provider; ignored for Claude. */
-  codexBinaryPath?: string;
-  /** Path to the Gemini CLI binary. Overrides auto-detection in compiled Archon builds.
-   *  Only relevant for the Gemini provider; ignored for Claude/Codex. */
-  geminiBinaryPath?: string;
-}
+// Provider config defaults — canonical definitions live in @archon/providers/types.
+// Imported and re-exported here so existing consumers don't break.
+import type {
+  ClaudeProviderDefaults,
+  CodexProviderDefaults,
+  GeminiProviderDefaults,
+  ProviderDefaultsMap,
+} from '@archon/providers/types';
 
-export interface ClaudeAssistantDefaults {
-  model?: string;
-  /** Claude Code settingSources — controls which CLAUDE.md files are loaded.
-   *  @default ['project']
-   *  @see https://github.com/anthropics/claude-agent-sdk */
-  settingSources?: ('project' | 'user')[];
-}
+export type {
+  ClaudeProviderDefaults,
+  CodexProviderDefaults,
+  GeminiProviderDefaults,
+  ProviderDefaultsMap,
+};
+
+/**
+ * Intersection type: generic ProviderDefaultsMap (any string key) with typed built-in entries.
+ * Built-in keys are typed so parseClaudeConfig/parseCodexConfig get type safety without casts.
+ * Community providers use the generic [string] index. This is intentional — removing the
+ * built-in intersection would force `as` casts everywhere built-in config is accessed.
+ */
+export type AssistantDefaultsConfig = ProviderDefaultsMap & {
+  claude?: ClaudeProviderDefaults;
+  codex?: CodexProviderDefaults;
+  gemini?: GeminiProviderDefaults;
+};
+
+/** Required variant — built-ins always present after config merge (registerBuiltinProviders guarantees it). */
+export type AssistantDefaultsRequired = ProviderDefaultsMap & {
+  claude: ClaudeProviderDefaults;
+  codex: CodexProviderDefaults;
+  gemini: GeminiProviderDefaults;
+};
 
 export interface GlobalConfig {
   /**
@@ -44,16 +57,12 @@ export interface GlobalConfig {
    * Default AI assistant when no codebase-specific preference
    * @default 'claude'
    */
-  defaultAssistant?: 'claude' | 'codex' | 'gemini';
+  defaultAssistant?: string;
 
   /**
    * Assistant-specific defaults (model, reasoning effort, etc.)
    */
-  assistants?: {
-    claude?: ClaudeAssistantDefaults;
-    codex?: AssistantDefaults;
-    gemini?: AssistantDefaults;
-  };
+  assistants?: AssistantDefaultsConfig;
 
   /**
    * Platform streaming preferences (can be overridden per conversation)
@@ -91,20 +100,6 @@ export interface GlobalConfig {
      */
     maxConversations?: number;
   };
-
-  /**
-   * Bypass the env-leak gate globally. When true, Archon will not refuse to
-   * register or spawn subprocesses for codebases whose auto-loaded .env files
-   * contain sensitive keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc).
-   *
-   * WARNING: Weakens the env-leak gate. Keys in the target repo's .env will
-   * be auto-loaded by Bun subprocesses (Claude/Codex) and bypass Archon's
-   * env allowlist. Use only on trusted machines.
-   *
-   * YAML key: `allow_target_repo_keys`
-   * @default false
-   */
-  allow_target_repo_keys?: boolean;
 }
 
 /**
@@ -116,16 +111,12 @@ export interface RepoConfig {
    * AI assistant preference for this repository
    * Overrides global default
    */
-  assistant?: 'claude' | 'codex' | 'gemini';
+  assistant?: string;
 
   /**
    * Assistant-specific defaults for this repository
    */
-  assistants?: {
-    claude?: ClaudeAssistantDefaults;
-    codex?: AssistantDefaults;
-    gemini?: AssistantDefaults;
-  };
+  assistants?: AssistantDefaultsConfig;
 
   /**
    * Commands configuration
@@ -181,12 +172,6 @@ export interface RepoConfig {
   env?: Record<string, string>;
 
   /**
-   * Per-repo override for the env-leak gate bypass. Repo value wins over global.
-   * YAML key: `allow_target_repo_keys`
-   */
-  allow_target_repo_keys?: boolean;
-
-  /**
    * Default commands/workflows configuration
    */
   defaults?: {
@@ -220,12 +205,8 @@ export interface RepoConfig {
  */
 export interface MergedConfig {
   botName: string;
-  assistant: 'claude' | 'codex' | 'gemini';
-  assistants: {
-    claude: ClaudeAssistantDefaults;
-    codex: AssistantDefaults;
-    gemini: AssistantDefaults;
-  };
+  assistant: string;
+  assistants: AssistantDefaultsRequired;
   streaming: {
     telegram: 'stream' | 'batch';
     discord: 'stream' | 'batch';
@@ -269,14 +250,6 @@ export interface MergedConfig {
    * Undefined when no env vars are configured.
    */
   envVars?: Record<string, string>;
-
-  /**
-   * Effective value of the env-leak gate bypass. When true, the env scanner
-   * is skipped during registration and pre-spawn. Repo-level override wins
-   * over global (explicit `false` at repo level re-enables the gate).
-   * @default false
-   */
-  allowTargetRepoKeys: boolean;
 }
 
 /**
@@ -285,12 +258,8 @@ export interface MergedConfig {
  */
 export interface SafeConfig {
   botName: string;
-  assistant: 'claude' | 'codex' | 'gemini';
-  assistants: {
-    claude: Pick<ClaudeAssistantDefaults, 'model'>;
-    codex: Pick<AssistantDefaults, 'model' | 'modelReasoningEffort' | 'webSearchMode'>;
-    gemini: Pick<AssistantDefaults, 'model'>;
-  };
+  assistant: string;
+  assistants: ProviderDefaultsMap;
   streaming: {
     telegram: 'stream' | 'batch';
     discord: 'stream' | 'batch';

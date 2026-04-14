@@ -54,6 +54,11 @@ mock.module('./event-emitter', () => ({
   getWorkflowEventEmitter: mock(() => mockEmitter),
 }));
 
+// --- Bootstrap provider registry (after path mocks) ---
+import { registerBuiltinProviders, clearRegistry } from '@archon/providers';
+clearRegistry();
+registerBuiltinProviders();
+
 // --- Import after mocks ---
 import { executeWorkflow } from './executor';
 import type { WorkflowDeps, IWorkflowPlatform, WorkflowConfig } from './deps';
@@ -101,7 +106,7 @@ function makeDeps(store?: IWorkflowStore): WorkflowDeps {
         commands: { folder: '' },
       })
     ),
-    createAssistantClient: mock(() => ({
+    getAgentProvider: mock(() => ({
       run: mock(async () => {}),
     })),
   } as unknown as WorkflowDeps;
@@ -291,7 +296,7 @@ describe('executeWorkflow', () => {
             docsPath: 'packages/docs-web/src/content/docs',
           })
         ),
-        createAssistantClient: mock(() => ({
+        getAgentProvider: mock(() => ({
           run: mock(async () => {}),
         })),
       } as unknown as WorkflowDeps;

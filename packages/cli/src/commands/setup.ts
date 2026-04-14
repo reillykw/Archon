@@ -28,6 +28,7 @@ import { BUNDLED_SKILL_FILES } from '../bundled-skill';
 import { homedir } from 'os';
 import { randomBytes } from 'crypto';
 import { spawn, execSync, type ChildProcess } from 'child_process';
+import { getRegisteredProviders } from '@archon/providers';
 
 // =============================================================================
 // Types
@@ -50,7 +51,7 @@ interface SetupConfig {
     geminiApiKey?: string;
     geminiVertexProject?: string;
     geminiVertexLocation?: string;
-    defaultAssistant: 'claude' | 'codex' | 'gemini';
+    defaultAssistant: string;
   };
   platforms: {
     github: boolean;
@@ -638,7 +639,8 @@ async function collectGeminiAuth(): Promise<{
  */
 async function collectAIConfig(): Promise<SetupConfig['ai']> {
   const assistants = await multiselect({
-    message: 'Which AI assistant(s) will you use? (↑↓ navigate, space select, enter confirm)',
+    message:
+      'Which built-in AI assistant(s) will you use? (↑↓ navigate, space select, enter confirm)',
     options: [
       { value: 'claude', label: 'Claude (Recommended)', hint: 'Anthropic Claude Code SDK' },
       { value: 'codex', label: 'Codex', hint: 'OpenAI Codex SDK' },
@@ -777,7 +779,7 @@ After upgrading, run 'archon setup' again.`,
       claude: false,
       codex: false,
       gemini: false,
-      defaultAssistant: 'claude',
+      defaultAssistant: getRegisteredProviders().find(p => p.builtIn)?.id ?? 'claude',
     };
   }
 
@@ -813,8 +815,9 @@ After upgrading, run 'archon setup' again.`,
     geminiVertexLocation = geminiAuth.vertexLocation;
   }
 
-  // Determine default assistant
-  let defaultAssistant: 'claude' | 'codex' | 'gemini' = 'claude';
+  // Determine default assistant — use the registry, but keep setup/auth flows built-in only.
+  // Default to first registered built-in provider rather than hardcoding 'claude'.
+  let defaultAssistant = getRegisteredProviders().find(p => p.builtIn)?.id ?? 'claude';
 
   const selectedCount = [hasClaude, hasCodex, hasGemini].filter(Boolean).length;
 
@@ -1584,7 +1587,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
         claude: existing?.hasClaude ?? false,
         codex: existing?.hasCodex ?? false,
         gemini: existing?.hasGemini ?? false,
-        defaultAssistant: 'claude',
+        defaultAssistant: getRegisteredProviders().find(p => p.builtIn)?.id ?? 'claude',
       },
       platforms: {
         github: existing?.platforms.github ?? false,
