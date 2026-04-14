@@ -105,6 +105,7 @@ export {
 export {
   startCleanupScheduler,
   stopCleanupScheduler,
+  isSchedulerRunning,
   onConversationClosed,
   SESSION_RETENTION_DAYS,
   getWorktreeStatusBreakdown,

@@ -341,7 +341,10 @@ export class GeminiProvider implements IAgentProvider {
                   typeof event.error === 'string'
                     ? event.error
                     : (event.error?.message ?? JSON.stringify(event.error));
-                throw new Error(`[API Error: ${errorMessage}]`);
+                const strMessage = String(errorMessage);
+                const prefix = strMessage.startsWith('[API Error:') ? '' : '[API Error: ';
+                const suffix = strMessage.startsWith('[API Error:') ? '' : ']';
+                throw new Error(`${prefix}${strMessage}${suffix}`);
               }
 
               // Final result
