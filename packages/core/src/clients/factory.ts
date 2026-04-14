@@ -7,6 +7,7 @@
 import type { IAssistantClient } from '../types';
 import { ClaudeClient } from './claude';
 import { CodexClient } from './codex';
+import { GeminiClient } from './gemini';
 import { createLogger } from '@archon/paths';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
@@ -31,7 +32,12 @@ export function getAssistantClient(type: string): IAssistantClient {
     case 'codex':
       getLog().debug({ provider: 'codex' }, 'client_selected');
       return new CodexClient();
+    case 'gemini':
+      getLog().debug({ provider: 'gemini' }, 'client_selected');
+      return new GeminiClient();
     default:
-      throw new Error(`Unknown assistant type: ${type}. Supported types: 'claude', 'codex'`);
+      throw new Error(
+        `Unknown assistant type: ${type}. Supported types: 'claude', 'codex', 'gemini'`
+      );
   }
 }

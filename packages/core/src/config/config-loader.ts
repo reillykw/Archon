@@ -194,6 +194,7 @@ function getDefaults(): MergedConfig {
     assistants: {
       claude: {},
       codex: {},
+      gemini: {},
     },
     streaming: {
       telegram: 'stream',
@@ -232,7 +233,7 @@ function applyEnvOverrides(config: MergedConfig): MergedConfig {
 
   // Assistant override
   const envAssistant = process.env.DEFAULT_AI_ASSISTANT;
-  if (envAssistant === 'claude' || envAssistant === 'codex') {
+  if (envAssistant === 'claude' || envAssistant === 'codex' || envAssistant === 'gemini') {
     config.assistant = envAssistant;
   }
 
@@ -277,6 +278,7 @@ function mergeGlobalConfig(defaults: MergedConfig, global: GlobalConfig): Merged
     assistants: {
       claude: { ...defaults.assistants.claude },
       codex: { ...defaults.assistants.codex },
+      gemini: { ...defaults.assistants.gemini },
     },
   };
 
@@ -300,6 +302,12 @@ function mergeGlobalConfig(defaults: MergedConfig, global: GlobalConfig): Merged
     result.assistants.codex = {
       ...result.assistants.codex,
       ...global.assistants.codex,
+    };
+  }
+  if (global.assistants?.gemini) {
+    result.assistants.gemini = {
+      ...result.assistants.gemini,
+      ...global.assistants.gemini,
     };
   }
 
@@ -339,6 +347,7 @@ function mergeRepoConfig(merged: MergedConfig, repo: RepoConfig): MergedConfig {
     assistants: {
       claude: { ...merged.assistants.claude },
       codex: { ...merged.assistants.codex },
+      gemini: { ...merged.assistants.gemini },
     },
   };
 
@@ -357,6 +366,12 @@ function mergeRepoConfig(merged: MergedConfig, repo: RepoConfig): MergedConfig {
     result.assistants.codex = {
       ...result.assistants.codex,
       ...repo.assistants.codex,
+    };
+  }
+  if (repo.assistants?.gemini) {
+    result.assistants.gemini = {
+      ...result.assistants.gemini,
+      ...repo.assistants.gemini,
     };
   }
 
@@ -479,6 +494,7 @@ export async function updateGlobalConfig(updates: Partial<GlobalConfig>): Promis
       merged.assistants = {
         claude: { ...current.assistants?.claude, ...updates.assistants.claude },
         codex: { ...current.assistants?.codex, ...updates.assistants.codex },
+        gemini: { ...current.assistants?.gemini, ...updates.assistants.gemini },
       };
     }
 
@@ -528,6 +544,9 @@ export function toSafeConfig(config: MergedConfig): SafeConfig {
         model: config.assistants.codex.model,
         modelReasoningEffort: config.assistants.codex.modelReasoningEffort,
         webSearchMode: config.assistants.codex.webSearchMode,
+      },
+      gemini: {
+        model: config.assistants.gemini.model,
       },
     },
     streaming: {

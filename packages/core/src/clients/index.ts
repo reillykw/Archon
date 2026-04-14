@@ -10,6 +10,7 @@
 
 export { ClaudeClient } from './claude';
 export { CodexClient } from './codex';
+export { GeminiClient } from './gemini';
 export { getAssistantClient } from './factory';
 
 // Re-export types for consumers importing from this submodule directly

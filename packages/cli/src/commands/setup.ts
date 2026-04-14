@@ -45,7 +45,12 @@ interface SetupConfig {
     claudeOauthToken?: string;
     codex: boolean;
     codexTokens?: CodexTokens;
-    defaultAssistant: 'claude' | 'codex';
+    gemini: boolean;
+    geminiAuthType?: 'studio' | 'vertex';
+    geminiApiKey?: string;
+    geminiVertexProject?: string;
+    geminiVertexLocation?: string;
+    defaultAssistant: 'claude' | 'codex' | 'gemini';
   };
   platforms: {
     github: boolean;
@@ -94,6 +99,7 @@ interface ExistingConfig {
   hasDatabase: boolean;
   hasClaude: boolean;
   hasCodex: boolean;
+  hasGemini: boolean;
   platforms: {
     github: boolean;
     telegram: boolean;
@@ -223,6 +229,21 @@ Install via npm:
 Requires Node.js 18 or later.
 After installation, run 'codex' to authenticate.`,
   },
+  gemini: {
+    name: 'Gemini CLI',
+    checkCommand: 'gemini',
+    instructions: `Gemini CLI is not installed.
+
+Install using one of these methods:
+
+  Via npm (requires Node.js 20+):
+    npm install -g @google/gemini-cli
+
+  Or via Homebrew (macOS/Linux):
+    brew install gemini-cli
+
+After installation, run 'gemini' to authenticate or configure via 'archon setup'.`,
+  },
 };
 
 /**
@@ -248,6 +269,10 @@ export function checkExistingConfig(): ExistingConfig | null {
       hasEnvValue(content, 'CODEX_ACCESS_TOKEN') &&
       hasEnvValue(content, 'CODEX_REFRESH_TOKEN') &&
       hasEnvValue(content, 'CODEX_ACCOUNT_ID'),
+    hasGemini:
+      hasEnvValue(content, 'GEMINI_API_KEY') ||
+      (hasEnvValue(content, 'GEMINI_VERTEX_PROJECT') &&
+        hasEnvValue(content, 'GEMINI_VERTEX_LOCATION')),
     platforms: {
       github: hasEnvValue(content, 'GITHUB_TOKEN') || hasEnvValue(content, 'GH_TOKEN'),
       telegram: hasEnvValue(content, 'TELEGRAM_BOT_TOKEN'),
@@ -530,6 +555,85 @@ async function collectCodexAuth(): Promise<CodexTokens | null> {
 }
 
 /**
+ * Collect Gemini authentication
+ */
+async function collectGeminiAuth(): Promise<{
+  authType: 'studio' | 'vertex';
+  apiKey?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+}> {
+  const authType = await select({
+    message: 'How do you want to authenticate with Gemini?',
+    options: [
+      {
+        value: 'studio',
+        label: 'Google AI Studio (API Key)',
+        hint: 'Simpler setup',
+      },
+      {
+        value: 'vertex',
+        label: 'Vertex AI',
+        hint: 'For enterprise Google Cloud users',
+      },
+    ],
+  });
+
+  if (isCancel(authType)) {
+    cancel('Setup cancelled.');
+    process.exit(0);
+  }
+
+  if (authType === 'studio') {
+    const apiKey = await password({
+      message: 'Enter your Gemini API Key:',
+      validate: value => {
+        if (!value || value.length < 10) {
+          return 'Please enter a valid API key';
+        }
+        return undefined;
+      },
+    });
+
+    if (isCancel(apiKey)) {
+      cancel('Setup cancelled.');
+      process.exit(0);
+    }
+
+    return { authType: 'studio', apiKey };
+  } else {
+    const vertexProject = await text({
+      message: 'Enter your Vertex AI Project ID:',
+      validate: value => {
+        if (!value) return 'Project ID is required';
+        return undefined;
+      },
+    });
+
+    if (isCancel(vertexProject)) {
+      cancel('Setup cancelled.');
+      process.exit(0);
+    }
+
+    const vertexLocation = await text({
+      message: 'Enter your Vertex AI Location (e.g. us-central1):',
+      placeholder: 'us-central1',
+      validate: value => {
+        if (!value) return 'Location is required';
+        return undefined;
+      },
+    });
+
+    if (isCancel(vertexLocation)) {
+      cancel('Setup cancelled.');
+      process.exit(0);
+    }
+
+    return { authType: 'vertex', vertexProject, vertexLocation };
+  }
+}
+
+/**
  * Collect AI assistant configuration
  */
 async function collectAIConfig(): Promise<SetupConfig['ai']> {
@@ -538,6 +642,7 @@ async function collectAIConfig(): Promise<SetupConfig['ai']> {
     options: [
       { value: 'claude', label: 'Claude (Recommended)', hint: 'Anthropic Claude Code SDK' },
       { value: 'codex', label: 'Codex', hint: 'OpenAI Codex SDK' },
+      { value: 'gemini', label: 'Gemini', hint: 'Google GenAI SDK' },
     ],
     required: false,
   });
@@ -549,6 +654,7 @@ async function collectAIConfig(): Promise<SetupConfig['ai']> {
 
   let hasClaude = assistants.includes('claude');
   let hasCodex = assistants.includes('codex');
+  let hasGemini = assistants.includes('gemini');
 
   // Check if selected CLI tools are installed
   if (hasClaude && !isCommandAvailable('claude')) {
@@ -648,11 +754,29 @@ After upgrading, run 'archon setup' again.`,
     }
   }
 
-  if (!hasClaude && !hasCodex) {
+  if (hasGemini && !isCommandAvailable('gemini')) {
+    note(CLI_INSTALL_INSTRUCTIONS.gemini.instructions, 'Gemini CLI Not Found');
+    const continueWithoutGemini = await confirm({
+      message: 'Continue setup without Gemini?',
+      initialValue: false,
+    });
+    if (isCancel(continueWithoutGemini)) {
+      cancel('Setup cancelled.');
+      process.exit(0);
+    }
+    if (!continueWithoutGemini) {
+      cancel('Please install Gemini CLI and run setup again.');
+      process.exit(0);
+    }
+    hasGemini = false;
+  }
+
+  if (!hasClaude && !hasCodex && !hasGemini) {
     log.warning('No AI assistant selected. You can add one later by running `archon setup` again.');
     return {
       claude: false,
       codex: false,
+      gemini: false,
       defaultAssistant: 'claude',
     };
   }
@@ -661,6 +785,10 @@ After upgrading, run 'archon setup' again.`,
   let claudeApiKey: string | undefined;
   let claudeOauthToken: string | undefined;
   let codexTokens: CodexTokens | undefined;
+  let geminiAuthType: 'studio' | 'vertex' | undefined;
+  let geminiApiKey: string | undefined;
+  let geminiVertexProject: string | undefined;
+  let geminiVertexLocation: string | undefined;
 
   // Collect Claude auth if selected
   if (hasClaude) {
@@ -676,16 +804,29 @@ After upgrading, run 'archon setup' again.`,
     codexTokens = tokens ?? undefined;
   }
 
-  // Determine default assistant
-  let defaultAssistant: 'claude' | 'codex' = 'claude';
+  // Collect Gemini auth if selected
+  if (hasGemini) {
+    const geminiAuth = await collectGeminiAuth();
+    geminiAuthType = geminiAuth.authType;
+    geminiApiKey = geminiAuth.apiKey;
+    geminiVertexProject = geminiAuth.vertexProject;
+    geminiVertexLocation = geminiAuth.vertexLocation;
+  }
 
-  if (hasClaude && hasCodex) {
+  // Determine default assistant
+  let defaultAssistant: 'claude' | 'codex' | 'gemini' = 'claude';
+
+  const selectedCount = [hasClaude, hasCodex, hasGemini].filter(Boolean).length;
+
+  if (selectedCount > 1) {
+    const options = [];
+    if (hasClaude) options.push({ value: 'claude', label: 'Claude (Recommended)' });
+    if (hasGemini) options.push({ value: 'gemini', label: 'Gemini' });
+    if (hasCodex) options.push({ value: 'codex', label: 'Codex' });
+
     const defaultChoice = await select({
       message: 'Which should be the default AI assistant?',
-      options: [
-        { value: 'claude', label: 'Claude (Recommended)' },
-        { value: 'codex', label: 'Codex' },
-      ],
+      options,
     });
 
     if (isCancel(defaultChoice)) {
@@ -693,9 +834,11 @@ After upgrading, run 'archon setup' again.`,
       process.exit(0);
     }
 
-    defaultAssistant = defaultChoice;
-  } else if (hasCodex && !hasClaude) {
+    defaultAssistant = defaultChoice as 'claude' | 'codex' | 'gemini';
+  } else if (hasCodex && !hasClaude && !hasGemini) {
     defaultAssistant = 'codex';
+  } else if (hasGemini && !hasClaude && !hasCodex) {
+    defaultAssistant = 'gemini';
   }
 
   return {
@@ -705,6 +848,11 @@ After upgrading, run 'archon setup' again.`,
     claudeOauthToken,
     codex: hasCodex,
     codexTokens,
+    gemini: hasGemini,
+    geminiAuthType,
+    geminiApiKey,
+    geminiVertexProject,
+    geminiVertexLocation,
     defaultAssistant,
   };
 }
@@ -1077,6 +1225,21 @@ export function generateEnvContent(config: SetupConfig): string {
     lines.push('');
   }
 
+  if (config.ai.gemini) {
+    lines.push('# Gemini Authentication');
+    if (config.ai.geminiAuthType === 'studio' && config.ai.geminiApiKey) {
+      lines.push(`GEMINI_API_KEY=${config.ai.geminiApiKey}`);
+    } else if (
+      config.ai.geminiAuthType === 'vertex' &&
+      config.ai.geminiVertexProject &&
+      config.ai.geminiVertexLocation
+    ) {
+      lines.push(`GEMINI_VERTEX_PROJECT=${config.ai.geminiVertexProject}`);
+      lines.push(`GEMINI_VERTEX_LOCATION=${config.ai.geminiVertexLocation}`);
+    }
+    lines.push('');
+  }
+
   // Default AI Assistant
   lines.push('# Default AI Assistant');
   lines.push(`DEFAULT_AI_ASSISTANT=${config.ai.defaultAssistant}`);
@@ -1420,6 +1583,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
       ai: {
         claude: existing?.hasClaude ?? false,
         codex: existing?.hasCodex ?? false,
+        gemini: existing?.hasGemini ?? false,
         defaultAssistant: 'claude',
       },
       platforms: {
@@ -1588,6 +1752,10 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
   }
   if (config.ai.codex && config.ai.codexTokens) {
     aiConfigured.push('Codex');
+  }
+  if (config.ai.gemini) {
+    const authMethod = config.ai.geminiAuthType === 'studio' ? 'API Key' : 'Vertex AI';
+    aiConfigured.push(`Gemini (${authMethod})`);
   }
 
   const summaryLines = [

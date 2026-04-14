@@ -362,7 +362,7 @@ function expandEnvVars(config: Record<string, unknown>): {
  */
 async function resolveNodeProviderAndModel(
   node: DagNode,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'gemini',
   workflowModel: string | undefined,
   config: WorkflowConfig,
   platform: IWorkflowPlatform,
@@ -371,16 +371,18 @@ async function resolveNodeProviderAndModel(
   cwd: string,
   workflowLevelOptions: WorkflowLevelOptions
 ): Promise<{
-  provider: 'claude' | 'codex';
+  provider: 'claude' | 'codex' | 'gemini';
   model: string | undefined;
   options: WorkflowAssistantOptions | undefined;
 }> {
-  let provider: 'claude' | 'codex';
+  let provider: 'claude' | 'codex' | 'gemini';
 
   if (node.provider) {
     provider = node.provider;
   } else if (node.model && isClaudeModel(node.model)) {
     provider = 'claude';
+  } else if (node.model && isModelCompatible('gemini', node.model)) {
+    provider = 'gemini';
   } else if (node.model) {
     provider = 'codex';
   } else {
@@ -402,21 +404,21 @@ async function resolveNodeProviderAndModel(
     provider === 'codex' &&
     (node.allowed_tools !== undefined || node.denied_tools !== undefined)
   ) {
-    getLog().warn({ nodeId: node.id }, 'dag_node_tool_restrictions_ignored_codex');
+    getLog().warn({ nodeId: node.id, provider }, 'dag_node_tool_restrictions_ignored');
     const delivered = await safeSendMessage(
       platform,
       conversationId,
-      `Warning: Node '${node.id}' has allowed_tools/denied_tools set but uses Codex — per-node tool restrictions are not supported for Codex. Configure MCP servers globally in the Codex CLI config instead.`,
+      `Warning: Node '${node.id}' has allowed_tools/denied_tools set but uses Codex — per-node tool restrictions are not supported. Configure MCP servers globally in the CLI config instead.`,
       { workflowId: workflowRunId, nodeName: node.id }
     );
     if (!delivered) {
-      getLog().error({ nodeId: node.id, workflowRunId }, 'dag_node_codex_warning_delivery_failed');
+      getLog().error({ nodeId: node.id, workflowRunId }, 'dag_node_warning_delivery_failed');
     }
   }
 
   // Warn if Codex node has hooks (unsupported)
   if (provider === 'codex' && node.hooks) {
-    getLog().warn({ nodeId: node.id }, 'dag_node_hooks_ignored_codex');
+    getLog().warn({ nodeId: node.id, provider }, 'dag_node_hooks_ignored');
     const delivered = await safeSendMessage(
       platform,
       conversationId,
@@ -430,11 +432,11 @@ async function resolveNodeProviderAndModel(
 
   // Warn if Codex node has mcp (unsupported per-call)
   if (provider === 'codex' && node.mcp) {
-    getLog().warn({ nodeId: node.id }, 'dag.mcp_ignored_codex');
+    getLog().warn({ nodeId: node.id, provider }, 'dag.mcp_ignored');
     const delivered = await safeSendMessage(
       platform,
       conversationId,
-      `Warning: Node '${node.id}' has mcp config but uses Codex — per-node MCP servers are not supported for Codex. Configure MCP servers globally in the Codex CLI config instead.`,
+      `Warning: Node '${node.id}' has mcp config but uses Codex — per-node MCP servers are not supported. Configure MCP servers globally in the CLI config instead.`,
       { workflowId: workflowRunId, nodeName: node.id }
     );
     if (!delivered) {
@@ -444,11 +446,11 @@ async function resolveNodeProviderAndModel(
 
   // Warn if Codex node has skills (unsupported)
   if (provider === 'codex' && node.skills) {
-    getLog().warn({ nodeId: node.id }, 'dag.skills_ignored_codex');
+    getLog().warn({ nodeId: node.id, provider }, 'dag.skills_ignored');
     const delivered = await safeSendMessage(
       platform,
       conversationId,
-      `Warning: Node '${node.id}' has skills set but uses Codex — per-node skills are not supported for Codex.`,
+      `Warning: Node '${node.id}' has skills set but uses Codex — per-node skills are not supported.`,
       { workflowId: workflowRunId, nodeName: node.id }
     );
     if (!delivered) {
@@ -469,7 +471,7 @@ async function resolveNodeProviderAndModel(
     ] as const;
     const present = claudeOnlyFields.filter(([, val]) => val !== undefined).map(([name]) => name);
     if (present.length > 0) {
-      getLog().warn({ nodeId: node.id, fields: present }, 'dag.claude_options_ignored_codex');
+      getLog().warn({ nodeId: node.id, fields: present, provider }, 'dag.claude_options_ignored');
       const delivered = await safeSendMessage(
         platform,
         conversationId,
@@ -493,6 +495,11 @@ async function resolveNodeProviderAndModel(
       webSearchMode: config.assistants.codex.webSearchMode,
       additionalDirectories: config.assistants.codex.additionalDirectories,
     };
+    if (node.output_format) {
+      options.outputFormat = { type: 'json_schema', schema: node.output_format };
+    }
+  } else if (provider === 'gemini') {
+    options = { model };
     if (node.output_format) {
       options.outputFormat = { type: 'json_schema', schema: node.output_format };
     }
@@ -716,7 +723,7 @@ async function executeNodeInternal(
   cwd: string,
   workflowRun: WorkflowRun,
   node: CommandNode | PromptNode,
-  provider: 'claude' | 'codex',
+  provider: 'claude' | 'codex' | 'gemini',
   nodeOptions: WorkflowAssistantOptions | undefined,
   artifactsDir: string,
   logDir: string,
@@ -1070,22 +1077,25 @@ async function executeNodeInternal(
           );
         }
         getLog().debug({ nodeId: node.id, streamingMode }, 'dag.structured_output_override');
-      } else if (provider === 'codex') {
-        // Codex returns structured output inline in agent_message text
+      } else if (provider === 'codex' || provider === 'gemini') {
+        // Codex/Gemini returns structured output inline in agent_message text
         // (already accumulated in nodeOutputText). Validate it is valid JSON
         // so downstream $nodeId.output.field references can parse it.
+        // Gemini doesn't have an equivalent to Codex's structured output inside text yet,
+        // it natively supports it via schema if used properly, so we don't strictly need to parse
+        // text here, but if we do...
         try {
           JSON.parse(nodeOutputText);
-          getLog().debug({ nodeId: node.id }, 'dag.codex_structured_output_valid_json');
+          getLog().debug({ nodeId: node.id, provider }, 'dag.structured_output_valid_json');
         } catch {
           getLog().warn(
-            { nodeId: node.id, outputPreview: nodeOutputText.slice(0, 200) },
-            'dag.codex_structured_output_not_json'
+            { nodeId: node.id, outputPreview: nodeOutputText.slice(0, 200), provider },
+            'dag.structured_output_not_json'
           );
           await safeSendMessage(
             platform,
             conversationId,
-            `Warning: Node '${node.id}' requested output_format but Codex returned non-JSON output. Downstream conditions referencing \`$${node.id}.output.field\` may not evaluate correctly.`,
+            `Warning: Node '${node.id}' requested output_format but ${provider} returned non-JSON output. Downstream conditions referencing \`$${node.id}.output.field\` may not evaluate correctly.`,
             nodeContext
           );
         }
@@ -1667,7 +1677,7 @@ async function executeScriptNode(
  * Caller is responsible for resolving per-node overrides before passing model.
  */
 function buildLoopNodeOptions(
-  provider: 'claude' | 'codex',
+  provider: 'claude' | 'codex' | 'gemini',
   model: string | undefined,
   config: WorkflowConfig
 ): WorkflowAssistantOptions | undefined {
@@ -1704,7 +1714,7 @@ async function executeLoopNode(
   cwd: string,
   workflowRun: WorkflowRun,
   node: LoopNode,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'gemini',
   workflowModel: string | undefined,
   artifactsDir: string,
   logDir: string,
@@ -2194,7 +2204,7 @@ async function executeApprovalNode(
   deps: WorkflowDeps,
   platform: IWorkflowPlatform,
   conversationId: string,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'gemini',
   workflowModel: string | undefined,
   cwd: string,
   artifactsDir: string,
@@ -2364,7 +2374,7 @@ export async function executeDagWorkflow(
   cwd: string,
   workflow: { name: string; nodes: readonly DagNode[] } & WorkflowLevelOptions,
   workflowRun: WorkflowRun,
-  workflowProvider: 'claude' | 'codex',
+  workflowProvider: 'claude' | 'codex' | 'gemini',
   workflowModel: string | undefined,
   artifactsDir: string,
   logDir: string,
@@ -2601,11 +2611,13 @@ export async function executeDagWorkflow(
           // 3b. Loop node dispatch — manages its own AI sessions and iteration
           if (isLoopNode(node)) {
             // Resolve per-node provider/model overrides (same logic as other node types)
-            let loopProvider: 'claude' | 'codex';
+            let loopProvider: 'claude' | 'codex' | 'gemini';
             if (node.provider) {
               loopProvider = node.provider;
             } else if (node.model && isClaudeModel(node.model)) {
               loopProvider = 'claude';
+            } else if (node.model && isModelCompatible('gemini', node.model)) {
+              loopProvider = 'gemini';
             } else if (node.model) {
               loopProvider = 'codex';
             } else {

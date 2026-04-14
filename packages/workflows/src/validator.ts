@@ -337,12 +337,16 @@ export async function validateWorkflowResources(
 
       // Warn if using MCP with Codex
       if (provider === 'codex') {
+        const hint =
+          provider === 'codex'
+            ? 'For Codex, configure MCP servers globally in ~/.codex/config.toml instead'
+            : 'MCP is Claude-only per-node';
         issues.push({
           level: 'warning',
           nodeId: node.id,
           field: 'mcp',
-          message: 'MCP servers are Claude-only per-node — this will be ignored on Codex',
-          hint: 'For Codex, configure MCP servers globally in ~/.codex/config.toml instead',
+          message: `MCP servers are Claude-only per-node — this will be ignored on ${provider}`,
+          hint,
         });
       }
     }
@@ -369,12 +373,16 @@ export async function validateWorkflowResources(
 
       // Warn if using skills with Codex
       if (provider === 'codex') {
+        const hint =
+          provider === 'codex'
+            ? 'For Codex, place skills in ~/.agents/skills/ for global discovery instead'
+            : 'Skills are Claude-only per-node';
         issues.push({
           level: 'warning',
           nodeId: node.id,
           field: 'skills',
-          message: 'Skills are Claude-only per-node — this will be ignored on Codex',
-          hint: 'For Codex, place skills in ~/.agents/skills/ for global discovery instead',
+          message: `Skills are Claude-only per-node — this will be ignored on ${provider}`,
+          hint,
         });
       }
     }
@@ -385,8 +393,8 @@ export async function validateWorkflowResources(
         level: 'warning',
         nodeId: node.id,
         field: 'hooks',
-        message: 'Hooks are Claude-only — this will be ignored on Codex',
-        hint: 'Hooks have no Codex equivalent. Remove them or switch to provider: claude',
+        message: `Hooks are Claude-only — this will be ignored on ${provider}`,
+        hint: `Hooks have no ${provider} equivalent. Remove them or switch to provider: claude`,
       });
     }
 
@@ -396,12 +404,16 @@ export async function validateWorkflowResources(
         ('allowed_tools' in node && node.allowed_tools !== undefined) ||
         ('denied_tools' in node && node.denied_tools !== undefined)
       ) {
+        const hint =
+          provider === 'codex'
+            ? 'For Codex, configure tool restrictions per MCP server in ~/.codex/config.toml'
+            : 'Tool restrictions are Claude-only';
         issues.push({
           level: 'warning',
           nodeId: node.id,
           field: 'allowed_tools/denied_tools',
-          message: 'Tool restrictions are Claude-only — this will be ignored on Codex',
-          hint: 'For Codex, configure tool restrictions per MCP server in ~/.codex/config.toml',
+          message: `Tool restrictions are Claude-only — this will be ignored on ${provider}`,
+          hint,
         });
       }
     }
