@@ -39,6 +39,8 @@ const AUTH_PATTERNS = [
   'unauthorized',
   'authentication',
   'invalid token',
+  'invalid_grant',
+  'reauth',
   '401',
   '403',
   'api key not valid',
