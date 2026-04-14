@@ -243,7 +243,7 @@ Install using one of these methods:
   Or via Homebrew (macOS/Linux):
     brew install gemini-cli
 
-After installation, run 'gemini' to authenticate or configure via 'archon setup'.`,
+After installation, run 'gcloud auth application-default login' to authenticate, then configure via 'archon setup'.`,
   },
 };
 

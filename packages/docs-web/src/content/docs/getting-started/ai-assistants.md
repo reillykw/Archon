@@ -130,6 +130,49 @@ If you want Codex to be the default AI assistant for new conversations without c
 DEFAULT_AI_ASSISTANT=codex
 ```
 
+## Gemini
+
+**Note: The Gemini CLI requires a Google Cloud Project and API credentials.**
+
+### Authenticate with gcloud
+
+First, authenticate and set your application default credentials using the `gcloud` CLI:
+
+```bash
+# Login to gcloud
+gcloud auth login
+
+# Set application default credentials (required for Gemini CLI)
+gcloud auth application-default login
+```
+
+### Set Environment Variables
+
+Set the following environment variables in your `.env` to configure your Google Cloud Project:
+
+```ini
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_LOCATION=global
+```
+
+### Gemini Configuration Options
+
+You can configure Gemini's behavior in `.archon/config.yaml`:
+
+```yaml
+assistants:
+  gemini:
+    model: auto-gemini-3  # or 'gemini-3.1-pro-preview', 'gemini-2.5-pro'
+```
+
+### Set as Default (Optional)
+
+If you want Gemini to be the default AI assistant for new conversations without codebase context, set this environment variable:
+
+```ini
+DEFAULT_AI_ASSISTANT=gemini
+```
+
 ## How Assistant Selection Works
 
 - Assistant type is set per codebase via the `assistant` field in `.archon/config.yaml` or the `DEFAULT_AI_ASSISTANT` env var

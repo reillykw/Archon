@@ -66,6 +66,8 @@ assistants:
     webSearchMode: disabled
     additionalDirectories:
       - /absolute/path/to/other/repo
+  gemini:
+    model: auto-gemini-3
 
 # Streaming preferences per platform
 streaming:
@@ -102,6 +104,8 @@ assistants:
   codex:
     model: gpt-5.3-codex
     webSearchMode: live
+  gemini:
+    model: auto-gemini-3
 
 # Commands configuration
 commands:
@@ -202,6 +206,13 @@ When `CLAUDE_USE_GLOBAL_AUTH` is unset, Archon auto-detects: it uses explicit to
 | `CODEX_ACCESS_TOKEN` | Codex access token | -- |
 | `CODEX_REFRESH_TOKEN` | Codex refresh token | -- |
 | `CODEX_ACCOUNT_ID` | Codex account ID | -- |
+
+### AI Providers -- Gemini
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `GOOGLE_CLOUD_PROJECT` | Google Cloud Project ID | -- |
+| `GOOGLE_CLOUD_LOCATION` | Google Cloud Location (e.g. `global`) | -- |
 
 ### Platform Adapters -- Slack
 

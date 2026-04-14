@@ -18,6 +18,8 @@ Set these in your shell or `.env` file:
 | `CLAUDE_CODE_OAUTH_TOKEN` | No | OAuth token from `claude setup-token` (alternative to global auth) |
 | `CLAUDE_API_KEY` | No | Anthropic API key for pay-per-use (alternative to global auth) |
 | `CODEX_ACCESS_TOKEN` | Yes (for Codex) | Codex access token (see [AI Assistants](/getting-started/ai-assistants/)) |
+| `GOOGLE_CLOUD_PROJECT` | Yes (for Gemini) | Google Cloud project ID for Gemini API |
+| `GOOGLE_CLOUD_LOCATION` | No | Google Cloud location for Gemini API (e.g., `global`, `us-central1`) |
 | `DATABASE_URL` | No | PostgreSQL connection string (default: SQLite) |
 | `LOG_LEVEL` | No | `debug`, `info` (default), `warn`, `error` |
 | `PORT` | No | Server port (default: 3090, Docker: 3000) |
@@ -35,6 +37,8 @@ assistants:
   codex:
     model: gpt-5.3-codex
     modelReasoningEffort: medium
+  gemini:
+    model: auto-gemini-3
 
 # docs:
 #   path: packages/docs-web/src/content/docs  # Optional: default is docs/
